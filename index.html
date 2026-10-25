@@ -241,6 +241,7 @@
     <!-- 추천 검색어 -->
     <div class="examples" style="margin-top:12px; margin-bottom:0;">
       <span class="lbl">추천 검색:</span>
+      <a onclick="quickSearch('휀룸')">휀룸 (팬룸)</a>
       <a onclick="quickSearch('펌프실')">펌프실</a>
       <a onclick="quickSearch('오수집수정')">오수집수정</a>
       <a onclick="quickSearch('캐노타일')">캐노타일</a>
@@ -351,9 +352,15 @@ function quickSearch(word) {
 
 function hl(text, query) {
   if (!text || !query) return text || '';
-  const tokens = query.trim().split(/\s+/).filter(Boolean);
+  const rawTokens = query.trim().split(/\s+/).filter(Boolean);
+  const allVariants = new Set();
+  rawTokens.forEach(t => {
+    expandTokenVariants(t).forEach(v => {
+      if (v && v.length >= 1) allVariants.add(v);
+    });
+  });
   let res = String(text);
-  tokens.forEach(t => {
+  Array.from(allVariants).sort((a,b) => b.length - a.length).forEach(t => {
     const reg = new RegExp(`(${t.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')})`, 'gi');
     res = res.replace(reg, '<mark>$1</mark>');
   });
@@ -365,6 +372,35 @@ function getActiveDataset() {
     return (typeof YANGJU_SAFE_DATA !== 'undefined') ? YANGJU_SAFE_DATA : [];
   }
   return customSites[activeSiteId] ? customSites[activeSiteId].data : [];
+}
+
+// 건설 현장 전문 동의어 사전 (이음동의어 자동 확장)
+const SYNONYM_GROUPS = [
+  ['휀룸', '팬룸', 'fan room', '환기실'],
+  ['휀', '팬', 'fan'],
+  ['elev', '엘리베이터', '승강기', '엘레베이터'],
+  ['피트', 'pit', '비트'],
+  ['da', '디에이'],
+  ['트렌치', 'trench'],
+  ['알루미늄', 'al'],
+  ['스테인레스', '스텐레스', 'sus', 'ssd']
+];
+
+function expandTokenVariants(rawToken) {
+  const token = rawToken.toLowerCase();
+  const variants = new Set([token]);
+
+  // 1. 단어 단위 기본 치환 (휀 <-> 팬)
+  if (token.includes('휀')) variants.add(token.replace(/휀/g, '팬'));
+  if (token.includes('팬')) variants.add(token.replace(/팬/g, '휀'));
+
+  // 2. 동의어 그룹 매칭
+  for (const grp of SYNONYM_GROUPS) {
+    if (grp.some(w => token.includes(w) || w.includes(token))) {
+      grp.forEach(w => variants.add(w));
+    }
+  }
+  return Array.from(variants);
 }
 
 // 0.01초 광속 검색
@@ -386,7 +422,8 @@ function executeInstantSearch(query) {
     return;
   }
 
-  const tokens = q.split(/\s+/).filter(Boolean);
+  const rawTokens = q.split(/\s+/).filter(Boolean);
+  const tokenVariantsList = rawTokens.map(expandTokenVariants);
   const matchedCards = [];
   let totalWinHits = 0;
   let totalFinHits = 0;
@@ -402,8 +439,12 @@ function executeInstantSearch(query) {
         const it = card.w[w];
         const text = (fullLoc + ' ' + it.n + ' ' + it.s).toLowerCase();
         let ok = true;
-        for (let t = 0; t < tokens.length; t++) {
-          if (!text.includes(tokens[t])) { ok = false; break; }
+        for (let t = 0; t < tokenVariantsList.length; t++) {
+          const variants = tokenVariantsList[t];
+          if (!variants.some(v => text.includes(v))) {
+            ok = false;
+            break;
+          }
         }
         if (ok) { matchedW.push(it); totalWinHits++; }
       }
@@ -416,8 +457,12 @@ function executeInstantSearch(query) {
         const it = card.f[f];
         const text = (fullLoc + ' ' + it.p + ' ' + it.n + ' ' + it.s).toLowerCase();
         let ok = true;
-        for (let t = 0; t < tokens.length; t++) {
-          if (!text.includes(tokens[t])) { ok = false; break; }
+        for (let t = 0; t < tokenVariantsList.length; t++) {
+          const variants = tokenVariantsList[t];
+          if (!variants.some(v => text.includes(v))) {
+            ok = false;
+            break;
+          }
         }
         if (ok) { matchedF.push(it); totalFinHits++; }
       }
@@ -485,8 +530,8 @@ function executeInstantSearch(query) {
       <div class="space-card">
         <div class="space-header">
           <div class="space-title">
-            <span>📍 ${c.l}</span>
-            <span class="space-room">${c.r}</span>
+            <span>📍 ${hl(c.l, q)}</span>
+            <span class="space-room">${hl(c.r, q)}</span>
           </div>
         </div>
         <div class="space-body">
