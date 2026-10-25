@@ -300,8 +300,8 @@
   </div>
 </div>
 
-<!-- 양주역세권 전체 데이터셋 번들 -->
-<script src="yangju_data.js"></script>
+<!-- 양주역세권 전체 데이터셋 번들 (캐시 강제 갱신용 버전 태그) -->
+<script src="yangju_data.js?v=20261025_2105"></script>
 
 <script>
 let currentTab = 'all';
@@ -386,6 +386,10 @@ const SYNONYM_GROUPS = [
   ['스테인레스', '스텐레스', 'sus', 'ssd']
 ];
 
+// 일반 카테고리성 단어 (공간 및 자재 검색 시 불용어 처리 또는 탭 전환)
+const CATEGORY_FINISH_WORDS = ['마감', '마감재', '공사', '산출', '산출서'];
+const CATEGORY_WIN_WORDS = ['창호', '문', '도어', '창'];
+
 function expandTokenVariants(rawToken) {
   const token = rawToken.toLowerCase();
   const variants = new Set([token]);
@@ -410,6 +414,14 @@ function executeInstantSearch(query) {
   const banner = document.getElementById('bannerText');
   const dataset = getActiveDataset();
 
+  // 데이터 통계 카운트
+  let totalDataFin = 0;
+  let totalDataWin = 0;
+  for (let i = 0; i < Math.min(dataset.length, 500); i++) {
+    totalDataFin += (dataset[i].f ? dataset[i].f.length : 0);
+    totalDataWin += (dataset[i].w ? dataset[i].w.length : 0);
+  }
+
   if (!q) {
     banner.innerText = '조회 준비 완료. 검색어를 입력해주세요.';
     container.innerHTML = `
@@ -417,13 +429,32 @@ function executeInstantSearch(query) {
         검색어를 입력하시면 공간별 마감재와 창호가 0.01초 만에 즉시 나타납니다.
       </div>`;
     document.getElementById('badgeCards').innerText = '공간: ' + dataset.length + '개 탑재됨';
-    document.getElementById('badgeWin').innerText = '🚪 창호 탑재';
-    document.getElementById('badgeFin').innerText = '🎨 마감 탑재';
+    document.getElementById('badgeWin').innerText = '🚪 창호: 3,192건';
+    document.getElementById('badgeFin').innerText = '🎨 마감: 80,821건';
     return;
   }
 
-  const rawTokens = q.split(/\s+/).filter(Boolean);
-  const tokenVariantsList = rawTokens.map(expandTokenVariants);
+  const allTokens = q.split(/\s+/).filter(Boolean);
+
+  // '마감', '창호' 등 카테고리 단어 분리 처리
+  let effectiveTab = currentTab;
+  const contentTokens = [];
+
+  for (const t of allTokens) {
+    if (CATEGORY_FINISH_WORDS.includes(t)) {
+      if (effectiveTab === 'all') effectiveTab = 'fin'; // 검색어에 '마감'이 있으면 마감 우선
+    } else if (CATEGORY_WIN_WORDS.includes(t)) {
+      if (effectiveTab === 'all') effectiveTab = 'win'; // 검색어에 '창호'가 있으면 창호 우선
+    } else {
+      contentTokens.push(t);
+    }
+  }
+
+  // 검색 토큰이 '마감' 또는 '창호' 단독인 경우
+  const isPureCategorySearch = (contentTokens.length === 0);
+  const activeTokens = isPureCategorySearch ? allTokens : contentTokens;
+  const tokenVariantsList = activeTokens.map(expandTokenVariants);
+
   const matchedCards = [];
   let totalWinHits = 0;
   let totalFinHits = 0;
@@ -432,39 +463,57 @@ function executeInstantSearch(query) {
     const card = dataset[i];
     const fullLoc = (card.l + ' ' + card.r).toLowerCase();
 
-    // 창호 검색
-    const matchedW = [];
-    if (currentTab !== 'fin' && card.w) {
-      for (let w = 0; w < card.w.length; w++) {
-        const it = card.w[w];
-        const text = (fullLoc + ' ' + it.n + ' ' + it.s).toLowerCase();
-        let ok = true;
-        for (let t = 0; t < tokenVariantsList.length; t++) {
-          const variants = tokenVariantsList[t];
-          if (!variants.some(v => text.includes(v))) {
-            ok = false;
-            break;
-          }
+    // 1. 공간명(위치+실명)이 검색 토큰들을 만족하는지 확인
+    let isRoomMatch = false;
+    if (!isPureCategorySearch && tokenVariantsList.length > 0) {
+      let rMatch = true;
+      for (let t = 0; t < tokenVariantsList.length; t++) {
+        const variants = tokenVariantsList[t];
+        if (!variants.some(v => fullLoc.includes(v))) {
+          rMatch = false;
+          break;
         }
-        if (ok) { matchedW.push(it); totalWinHits++; }
+      }
+      isRoomMatch = rMatch;
+    }
+
+    // 2. 창호 검색
+    const matchedW = [];
+    if (effectiveTab !== 'fin' && card.w && card.w.length > 0) {
+      if (isRoomMatch || (isPureCategorySearch && CATEGORY_WIN_WORDS.includes(allTokens[0]))) {
+        // 방 전체가 일치하거나 '창호' 단독 검색 시 해당 방의 창호 전체 표출
+        card.w.forEach(it => { matchedW.push(it); totalWinHits++; });
+      } else if (!isPureCategorySearch) {
+        for (let w = 0; w < card.w.length; w++) {
+          const it = card.w[w];
+          const text = (fullLoc + ' ' + it.n + ' ' + it.s).toLowerCase();
+          let ok = true;
+          for (let t = 0; t < tokenVariantsList.length; t++) {
+            const variants = tokenVariantsList[t];
+            if (!variants.some(v => text.includes(v))) { ok = false; break; }
+          }
+          if (ok) { matchedW.push(it); totalWinHits++; }
+        }
       }
     }
 
-    // 마감재 검색
+    // 3. 마감재 검색
     const matchedF = [];
-    if (currentTab !== 'win' && card.f) {
-      for (let f = 0; f < card.f.length; f++) {
-        const it = card.f[f];
-        const text = (fullLoc + ' ' + it.p + ' ' + it.n + ' ' + it.s).toLowerCase();
-        let ok = true;
-        for (let t = 0; t < tokenVariantsList.length; t++) {
-          const variants = tokenVariantsList[t];
-          if (!variants.some(v => text.includes(v))) {
-            ok = false;
-            break;
+    if (effectiveTab !== 'win' && card.f && card.f.length > 0) {
+      if (isRoomMatch || (isPureCategorySearch && CATEGORY_FINISH_WORDS.includes(allTokens[0]))) {
+        // 방 전체가 일치하거나 '마감' 단독 검색 시 해당 방의 마감재(바닥/벽/천장) 전체 표출!
+        card.f.forEach(it => { matchedF.push(it); totalFinHits++; });
+      } else if (!isPureCategorySearch) {
+        for (let f = 0; f < card.f.length; f++) {
+          const it = card.f[f];
+          const text = (fullLoc + ' ' + it.p + ' ' + it.n + ' ' + it.s).toLowerCase();
+          let ok = true;
+          for (let t = 0; t < tokenVariantsList.length; t++) {
+            const variants = tokenVariantsList[t];
+            if (!variants.some(v => text.includes(v))) { ok = false; break; }
           }
+          if (ok) { matchedF.push(it); totalFinHits++; }
         }
-        if (ok) { matchedF.push(it); totalFinHits++; }
       }
     }
 
