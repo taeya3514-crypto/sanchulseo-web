@@ -167,6 +167,14 @@
   .badge-detail.sachum { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
   .badge-detail.foam { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
 
+  .btn-detail {
+    background: #e2e8f0; color: #1e293b; border: 1px solid #cbd5e1;
+    padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 700;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+    transition: all 0.15s;
+  }
+  .btn-detail:hover { background: #cbd5e1; color: #0f172a; }
+
   mark { background: var(--mark); color: inherit; padding: 1px 3px; border-radius: 2px; font-weight: 700; }
 
   /* 모달 */
@@ -301,7 +309,7 @@
 </div>
 
 <!-- 양주역세권 전체 데이터셋 번들 (캐시 강제 갱신용 버전 태그) -->
-<script src="yangju_data.js?v=20261025_2105"></script>
+<script src="yangju_data.js?v=20261025_2115"></script>
 
 <script>
 let currentTab = 'all';
@@ -527,9 +535,22 @@ function executeInstantSearch(query) {
         f: matchedF,
         wq: Math.round(winQty * 10) / 10
       });
-      if (matchedCards.length >= 60) break;
+      if (matchedCards.length >= 150) break;
     }
   }
+
+  // ★ 창호 우선 정렬: 창호+마감 동시 보유 카드 -> 창호 카드 -> 마감 카드
+  matchedCards.sort((a, b) => {
+    const aHasW = a.w && a.w.length > 0;
+    const bHasW = b.w && b.w.length > 0;
+    const aHasF = a.f && a.f.length > 0;
+    const bHasF = b.f && b.f.length > 0;
+    if (aHasW && aHasF && !(bHasW && bHasF)) return -1;
+    if (bHasW && bHasF && !(aHasW && aHasF)) return 1;
+    if (aHasW && !bHasW) return -1;
+    if (bHasW && !aHasW) return 1;
+    return 0;
+  });
 
   banner.innerHTML = `'<b>${q}</b>' 검색 결과: 총 <b>${matchedCards.length}</b>개 공간 발견`;
   document.getElementById('badgeCards').innerText = '공간: ' + matchedCards.length + '개';
@@ -582,6 +603,11 @@ function executeInstantSearch(query) {
             <span>📍 ${hl(c.l, q)}</span>
             <span class="space-room">${hl(c.r, q)}</span>
           </div>
+          <div class="space-actions">
+            <button class="btn-detail" onclick="openDetailNotice('${c.l}', '${c.r}')">
+              <span>📐 CAD 도면 & 산식 안내</span>
+            </button>
+          </div>
         </div>
         <div class="space-body">
           ${c.w.length > 0 ? `
@@ -616,6 +642,11 @@ function executeInstantSearch(query) {
   });
 
   container.innerHTML = html;
+}
+
+// CAD 및 상세 안내 모달
+function openDetailNotice(loc, room) {
+  alert(`📐 [CAD 도면 및 산식 안내]\n\n공간: ${loc} > ${room}\n\n※ CAD 그래픽 평면도 확대 열람 및 산출 산식(면적 A, 둘레 L, 층고 H 등 수식) 정밀 분석은 대우건설 사내 PC 전용 [🚪 산출서_종합조회.bat]에서 실시간으로 완벽 지원됩니다.\n\n(클라우드 웹앱은 24시간 어디서나 마감·창호 규격 및 사양을 초고속 조회하는 용도입니다)`);
 }
 
 // 모달 제어
