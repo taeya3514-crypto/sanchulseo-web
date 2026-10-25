@@ -178,20 +178,57 @@
   mark { background: var(--mark); color: inherit; padding: 1px 3px; border-radius: 2px; font-weight: 700; }
 
   /* 모달 */
-  .modal-overlay {
+  .modal-overlay, .cad-modal-overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(4px);
     display: none; align-items: center; justify-content: center; z-index: 10000; padding: 16px;
   }
-  .modal-overlay.active { display: flex; }
-  .modal-box {
+  .modal-overlay.active, .cad-modal-overlay.active { display: flex; }
+  .modal-box, .cad-modal-box {
     background: #fff; width: 100%; max-width: 650px; border-radius: 14px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.25); overflow: hidden; display: flex; flex-direction: column;
   }
-  .modal-head {
-    background: #1e507b; color: #fff; padding: 13px 18px; display: flex; justify-content: space-between; align-items: center;
+  .cad-modal-box {
+    background: #fff; width: 92%; max-width: 1080px; height: 88vh; max-height: 94vh;
+    border-radius: 12px; resize: both; overflow: hidden; min-width: 480px; min-height: 380px;
+    box-shadow: 0 14px 45px rgba(0,0,0,0.35); display: flex; flex-direction: column;
+    border: 1px solid var(--line-strong);
   }
-  .modal-head h3 { margin: 0; font-size: 15.5px; font-weight: 700; }
-  .modal-body { padding: 16px; overflow-y: auto; }
+  .cad-modal-box.fullscreen {
+    width: 98vw !important; max-width: 98vw !important; height: 96vh !important; max-height: 96vh !important;
+    border-radius: 6px;
+  }
+  .modal-head, .cad-modal-head {
+    background: #1e507b; color: #fff; padding: 11px 18px; display: flex; justify-content: space-between; align-items: center;
+  }
+  .modal-head h3, .cad-modal-head h3 { margin: 0; font-size: 15px; font-weight: 700; }
+  .modal-body, .cad-modal-body { padding: 18px; overflow-y: auto; flex: 1; }
+
+  .btn-modal-ctrl {
+    background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.35); color: #fff;
+    border-radius: 5px; padding: 3px 10px; font-size: 12px; font-weight: 700; cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-modal-ctrl:hover { background: rgba(255,255,255,0.3); }
+
+  .cad-img-wrap {
+    text-align: center; background: #0f172a; border: 1px solid #334155; border-radius: 8px;
+    padding: 16px; max-height: 420px; overflow: auto; cursor: zoom-in; position: relative;
+    margin-bottom: 16px; color: #94a3b8;
+  }
+  .cad-img-wrap.zoomed { max-height: none; cursor: zoom-out; }
+  .cad-img-wrap.zoomed img { max-width: none; width: 140%; }
+  .cad-img-wrap img { max-width: 100%; max-height: 380px; object-fit: contain; }
+
+  .cad-blueprint-box {
+    background: linear-gradient(135deg, #0b192c 0%, #1e3e62 100%);
+    border: 1px solid #3b82f6; border-radius: 8px; padding: 20px; color: #e2e8f0;
+    margin-bottom: 16px; text-align: center;
+  }
+  .cad-blueprint-grid {
+    border: 1px dashed rgba(255,255,255,0.25); border-radius: 6px; padding: 24px;
+    background: radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
 
   .drop-zone {
     border: 2px dashed #94a3b8; border-radius: 10px; padding: 26px 16px; text-align: center;
@@ -308,8 +345,24 @@
   </div>
 </div>
 
+<!-- CAD 도면 & 산출 상세 모달 (로컬 app_v3와 동일한 고품격 팝업) -->
+<div class="cad-modal-overlay" id="cadModal" onclick="closeCadModal(event)">
+  <div class="cad-modal-box" id="cadModalBox" onclick="event.stopPropagation()">
+    <div class="cad-modal-head">
+      <h3 id="cadModalTitle">📐 CAD 도면 & 산출 상세</h3>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button type="button" class="btn-modal-ctrl" id="btnFullscreen" onclick="toggleCadFullscreen()" title="창 최대화 / 복원">⛶ 최대화</button>
+        <button style="background:none; border:none; color:#fff; font-size:24px; cursor:pointer; line-height:1;" onclick="closeCadModal()">&times;</button>
+      </div>
+    </div>
+    <div class="cad-modal-body" id="cadModalContent">
+      <!-- 동적 주입 -->
+    </div>
+  </div>
+</div>
+
 <!-- 양주역세권 전체 데이터셋 번들 (캐시 강제 갱신용 버전 태그) -->
-<script src="yangju_data.js?v=20261025_2120"></script>
+<script src="yangju_data.js?v=20261025_2210"></script>
 
 <script>
 let currentTab = 'all';
@@ -565,8 +618,9 @@ function executeInstantSearch(query) {
     return;
   }
 
+  currentRenderedCards = matchedCards;
   let html = '';
-  matchedCards.forEach(c => {
+  matchedCards.forEach((c, idx) => {
     let winRows = '';
     c.w.forEach(w => {
       let badges = '';
@@ -604,8 +658,8 @@ function executeInstantSearch(query) {
             <span class="space-room">${hl(c.r, q)}</span>
           </div>
           <div class="space-actions">
-            <button class="btn-detail" onclick="openDetailNotice('${c.l}', '${c.r}')">
-              <span>📐 CAD 도면 & 산식 안내</span>
+            <button class="btn-detail" onclick="openCadModal(${idx})">
+              <span>📐 CAD 도면 & 산출 상세</span>
             </button>
           </div>
         </div>
@@ -644,9 +698,124 @@ function executeInstantSearch(query) {
   container.innerHTML = html;
 }
 
-// CAD 및 상세 안내 모달
-function openDetailNotice(loc, room) {
-  alert(`📐 [CAD 도면 및 산식 안내]\n\n공간: ${loc} > ${room}\n\n※ CAD 그래픽 평면도 확대 열람 및 산출 산식(면적 A, 둘레 L, 층고 H 등 수식) 정밀 분석은 대우건설 사내 PC 전용 [🚪 산출서_종합조회.bat]에서 실시간으로 완벽 지원됩니다.\n\n(클라우드 웹앱은 24시간 어디서나 마감·창호 규격 및 사양을 초고속 조회하는 용도입니다)`);
+// 전역 보관용 렌더링 카드 리스트
+let currentRenderedCards = [];
+
+// CAD 도면 & 산출 상세 모달 열기
+function openCadModal(idx) {
+  const c = currentRenderedCards[idx];
+  if (!c) return;
+
+  const overlay = document.getElementById('cadModal');
+  const title = document.getElementById('cadModalTitle');
+  const body = document.getElementById('cadModalContent');
+
+  title.innerHTML = `📐 <b>CAD 도면 & 산출 상세</b> : <span style="font-weight:400;">${c.l} ></span> <b style="color:#fde047;">${c.r}</b>`;
+
+  // 창호 테이블
+  let winHtml = '';
+  if (c.w && c.w.length > 0) {
+    let rows = '';
+    c.w.forEach(w => {
+      let badges = '';
+      if (w.gl) badges += `<span class="badge-detail glass">🪟 <b>유리</b>: ${w.gl}</span>`;
+      if (w.ck) badges += `<span class="badge-detail caulk">💧 <b>코킹</b>: ${w.ck}</span>`;
+      if (w.sc) badges += `<span class="badge-detail sachum">🧱 <b>사춤</b>: ${w.sc}</span>`;
+      if (w.fm) badges += `<span class="badge-detail foam">🟡 <b>단열폼</b>: ${w.fm}</span>`;
+      if (!badges) badges = '<span style="color:#94a3b8; font-size:11px;">기본 부속재</span>';
+      rows += `
+        <tr>
+          <td><b style="color:#b45309;">${w.n}</b></td>
+          <td>${w.s}</td>
+          <td style="text-align:right; font-weight:800; color:#b45309;">${w.q} 개소</td>
+          <td><div class="win-sub-badges">${badges}</div></td>
+        </tr>`;
+    });
+    winHtml = `
+      <div style="margin-top:16px;">
+        <div class="sub-sec-title win" style="font-size:13.5px; font-weight:700; color:#b45309; margin-bottom:8px;">
+          🚪 창호(문·창) 및 부속 마감 사양 (소계: ${c.wq} 개소)
+        </div>
+        <div class="table-wrap">
+          <table class="content-table">
+            <thead><tr><th class="win-th">창호부호/품명</th><th class="win-th">규격(W×H)</th><th class="win-th" style="text-align:right;">수량</th><th class="win-th">부속 마감 사양</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+
+  // 마감재 테이블
+  let finHtml = '';
+  if (c.f && c.f.length > 0) {
+    let rows = '';
+    c.f.forEach(f => {
+      rows += `
+        <tr>
+          <td><span class="badge-part">${f.p || '마감'}</span></td>
+          <td><b>${f.n}</b></td>
+          <td style="color:#64748b;">${f.s || '-'}</td>
+          <td style="text-align:center;">${f.u}</td>
+          <td style="text-align:right; font-weight:700;">${f.q}</td>
+        </tr>`;
+    });
+    finHtml = `
+      <div style="margin-top:16px;">
+        <div class="sub-sec-title finish" style="font-size:13.5px; font-weight:700; color:#0369a1; margin-bottom:8px;">
+          🎨 공간 마감재 산출 상세 내역 (${c.f.length} 품목)
+        </div>
+        <div class="table-wrap">
+          <table class="content-table">
+            <thead><tr><th style="width:70px;">부위</th><th>품명</th><th>규격</th><th style="width:60px; text-align:center;">단위</th><th style="width:85px; text-align:right;">수량</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+
+  body.innerHTML = `
+    <!-- 1. CAD 평면 도면 뷰어 (클릭 시 140% 줌) -->
+    <div class="cad-img-wrap" onclick="this.classList.toggle('zoomed')" title="클릭하여 도면 확대/축소 (140% Zoom)">
+      <div class="cad-blueprint-box">
+        <div class="cad-blueprint-grid">
+          <div style="font-size:11px; color:#60a5fa; letter-spacing:1px; margin-bottom:4px;">★ DAEWOO E&C DIGITAL BLUEPRINT VIEWER</div>
+          <div style="font-size:18px; font-weight:800; color:#fff; margin-bottom:12px;">📐 [평면 산출도] ${c.l} > ${c.r}</div>
+          <div style="display:flex; justify-content:center; gap:16px; font-size:12px; color:#cbd5e1; margin-bottom:8px;">
+            <span>📍 공간 식별: <b>${c.r}</b></span>
+            <span>🚪 배정 창호: <b style="color:#fde047;">${c.w ? c.w.length : 0}종 (${c.wq || 0}개소)</b></span>
+            <span>🎨 마감 품목: <b style="color:#93c5fd;">${c.f ? c.f.length : 0}건</b></span>
+          </div>
+          <div style="font-size:11px; color:#94a3b8;">
+            (💡 화면을 클릭하시면 도면 뷰어가 140% 확대/축소됩니다)
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. 창호 및 마감재 정밀 상세 명세 -->
+    ${winHtml}
+    ${finHtml}
+
+    <!-- 3. 사내 PC 실시간 CAD 및 산식 연동 안내 -->
+    <div style="margin-top:20px; padding:12px 16px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; font-size:12px; color:#475569; line-height:1.6;">
+      💡 <b>안내</b>: 본 클라우드 웹앱은 24시간 언제 어디서나 마감·창호 사양을 초고속 조회할 수 있습니다.<br>
+      실제 CAD 원본 DWG/PNG 이미지의 픽셀 단위 정밀 확대 및 openpyxl 엑셀 산출식(면적 A, 둘레 L, 층고 H 등 수식) 정밀 열람은 사내 PC 전용 <b>[🚪 산출서_종합조회.bat]</b>에서 실시간으로 완벽 지원됩니다.
+    </div>
+  `;
+
+  overlay.classList.add('active');
+}
+
+function closeCadModal(e) {
+  if (e && e.target !== document.getElementById('cadModal') && !e.target.matches('.cad-modal-head button')) return;
+  document.getElementById('cadModal').classList.remove('active');
+}
+
+function toggleCadFullscreen() {
+  const box = document.getElementById('cadModalBox');
+  const btn = document.getElementById('btnFullscreen');
+  box.classList.toggle('fullscreen');
+  btn.innerText = box.classList.contains('fullscreen') ? '🗗 이전 크기' : '⛶ 최대화';
 }
 
 // 모달 제어
